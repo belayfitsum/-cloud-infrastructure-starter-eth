@@ -139,3 +139,16 @@ Feature Branch → PR → terraform-plan runs → Review → Merge → terraform
 - Automation and scripting
 - Cost optimization
 - Documentation and knowledge sharing
+
+## Branch Protection Setup
+
+To enforce PR workflow and prevent direct pushes to main:
+
+1. Go to **Settings** → **Branches** in your GitHub repository
+2. Click **Add branch protection rule**
+3. Branch name pattern: `main`
+4. Enable: **✅ Require a pull request before merging**
+5. Click **Create**
+
+This ensures all changes go through the PR review process before merging to main.
+Trust me you will benefit alot in doing this, and makes it easier to understand.
