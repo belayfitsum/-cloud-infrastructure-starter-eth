@@ -1,0 +1,209 @@
+# AWS Infrastructure Architecture Diagram
+
+## High-Level Architecture
+
+```
+                                    ┌─────────────────┐
+                                    │   Internet      │
+                                    │   Gateway       │
+                                    └────────┬────────┘
+                                             │
+                    ┌────────────────────────┴────────────────────────┐
+                    │                                                  │
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                          VPC (10.0.0.0/16)                                     │
+│                                                                                │
+│   ┌─────────────────────────────────┐   ┌─────────────────────────────────┐  │
+│   │   Public Subnet (AZ-1)          │   │   Public Subnet (AZ-2)          │  │
+│   │   10.0.1.0/24                   │   │   10.0.2.0/24                   │  │
+│   │                                 │   │                                 │  │
+│   │   ┌─────────────────────────┐   │   │                                 │  │
+│   │   │  Application Load       │   │   │                                 │  │
+│   │   │  Balancer (ALB)         │◄──┼───┼─────────────────────────────────┼──┤
+│   │   │  Port: 80, 443          │   │   │                                 │  │
+│   │   └──────────┬──────────────┘   │   │                                 │  │
+│   └──────────────┼──────────────────┘   └─────────────────────────────────┘  │
+│                  │                                                             │
+│                  │  Health Checks                                              │
+│                  │  Target Group                                               │
+│                  │                                                             │
+│   ┌──────────────┼──────────────────┐   ┌─────────────────────────────────┐  │
+│   │   Private Subnet (AZ-1)         │   │   Private Subnet (AZ-2)         │  │
+│   │   10.0.10.0/24                  │   │   10.0.11.0/24                  │  │
+│   │                                 │   │                                 │  │
+│   │   ┌────────────────────┐        │   │   ┌────────────────────┐        │  │
+│   │   │  EC2 Instance      │        │   │   │  EC2 Instance      │        │  │
+│   │   │  (Web Server 1)    │        │   │   │  (Web Server 2)    │        │  │
+│   │   │  t3.micro          │        │   │   │  t3.micro          │        │  │
+│   │   │  Apache HTTP       │        │   │   │  Apache HTTP       │        │  │
+│   │   │  IAM Role          │        │   │   │  IAM Role          │        │  │
+│   │   │  SSM Access        │        │   │   │  SSM Access        │        │  │
+│   │   └─────────┬──────────┘        │   │   └─────────┬──────────┘        │  │
+│   └─────────────┼───────────────────┘   └─────────────┼───────────────────┘  │
+│                 │                                      │                       │
+│                 │                                      │                       │
+│                 └──────────────┬───────────────────────┘                       │
+│                                │                                               │
+│   ┌────────────────────────────┴────────────────────────────────────────┐     │
+│   │                    Private Subnet (Database)                        │     │
+│   │                    10.0.20.0/24                                     │     │
+│   │                                                                     │     │
+│   │                    ┌─────────────────────────┐                      │     │
+│   │                    │  RDS MySQL 8.0          │                      │     │
+│   │                    │  db.t3.micro            │                      │     │
+│   │                    │  Multi-AZ: No           │                      │     │
+│   │                    │  Encrypted Storage      │                      │     │
+│   │                    │  Automated Backups      │                      │     │
+│   │                    └─────────────────────────┘                      │     │
+│   └─────────────────────────────────────────────────────────────────────┘     │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+
+## Supporting AWS Services (Outside VPC)
+
+┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
+│   AWS Secrets        │  │   Amazon             │  │   Amazon S3          │
+│   Manager            │  │   CloudWatch         │  │   (ALB Logs)         │
+│                      │  │                      │  │                      │
+│   - DB Password      │  │   - Alarms           │  │   - Access Logs      │
+│   - Encrypted        │  │   - Metrics          │  │   - 30-day Retention │
+│   - Auto-rotation    │  │   - Log Groups       │  │   - Encrypted        │
+└──────────────────────┘  └──────────────────────┘  └──────────────────────┘
+
+┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
+│   AWS Budgets        │  │   IAM Roles          │  │   GitHub Actions     │
+│                      │  │                      │  │                      │
+│   - Monthly: $50     │  │   - EC2 Instance     │  │   - CI/CD Pipeline   │
+│   - Alert: 80%       │  │     Profile          │  │   - Terraform        │
+│   - Alert: 100%      │  │   - Least Privilege  │  │   - Auto Deploy      │
+└──────────────────────┘  └──────────────────────┘  └──────────────────────┘
+
+
+## Security Groups
+
+┌─────────────────────────────────────────────────────────────────┐
+│  ALB Security Group                                             │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Inbound:                                                │   │
+│  │    - Port 80 (HTTP)    from 0.0.0.0/0                   │   │
+│  │    - Port 443 (HTTPS)  from 0.0.0.0/0                   │   │
+│  │  Outbound:                                               │   │
+│  │    - All traffic       to 0.0.0.0/0                     │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  EC2 Security Group                                             │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Inbound:                                                │   │
+│  │    - Port 80 (HTTP)    from ALB Security Group          │   │
+│  │  Outbound:                                               │   │
+│  │    - All traffic       to 0.0.0.0/0                     │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  RDS Security Group                                             │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Inbound:                                                │   │
+│  │    - Port 3306 (MySQL) from EC2 Security Group          │   │
+│  │  Outbound:                                               │   │
+│  │    - None                                                │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+
+
+## Traffic Flow
+
+1. User Request
+   └─> Internet Gateway
+       └─> Application Load Balancer (Public Subnet)
+           └─> Target Group (Health Check)
+               └─> EC2 Instance (Private Subnet)
+                   └─> RDS MySQL (Private Subnet)
+
+2. Monitoring
+   └─> CloudWatch Alarms
+       ├─> Response Time > 1s
+       ├─> Unhealthy Hosts > 0
+       └─> RDS CPU > 80%
+
+3. Logging
+   └─> ALB Access Logs
+       └─> S3 Bucket
+           └─> 30-day Lifecycle Policy
+
+4. Security
+   └─> Secrets Manager
+       ├─> Database Password
+       └─> EC2 IAM Role Access
+
+
+## Cost Breakdown (Estimated Monthly)
+
+┌────────────────────────────────────────────────────────┐
+│  Service              │  Configuration  │  Cost/Month  │
+├────────────────────────────────────────────────────────┤
+│  EC2 (2x t3.micro)    │  On-Demand      │  ~$15        │
+│  RDS (db.t3.micro)    │  Single-AZ      │  ~$15        │
+│  ALB                  │  Basic          │  ~$16        │
+│  Data Transfer        │  Minimal        │  ~$2         │
+│  CloudWatch           │  Basic Metrics  │  ~$1         │
+│  S3 (Logs)            │  < 1GB          │  ~$0.50      │
+│  Secrets Manager      │  1 Secret       │  ~$0.50      │
+├────────────────────────────────────────────────────────┤
+│  TOTAL                │                 │  ~$50/month  │
+└────────────────────────────────────────────────────────┘
+
+Note: Costs may vary based on usage and region.
+
+
+## High Availability Features
+
+✓ Multi-AZ deployment (2 Availability Zones)
+✓ Load balancer distributes traffic
+✓ Auto-healing with health checks
+✓ Automated RDS backups
+✓ CloudWatch monitoring and alerts
+
+
+## Security Features
+
+✓ Private subnets for EC2 and RDS
+✓ Security groups with least privilege
+✓ No SSH keys (SSM Session Manager)
+✓ Encrypted secrets (Secrets Manager)
+✓ IAM roles (no hardcoded credentials)
+✓ Encrypted S3 buckets
+✓ VPC isolation
+
+
+## Monitoring & Observability
+
+✓ CloudWatch Alarms (Response time, Health, CPU)
+✓ ALB Access Logs to S3
+✓ Log retention policies
+✓ Health check automation scripts
+✓ Cost budgets and alerts
+
+
+## CI/CD Pipeline
+
+GitHub Actions Workflows:
+├─ terraform-plan.yml    (Runs on Pull Request)
+├─ terraform-apply.yml   (Runs on merge to main)
+└─ terraform-prod.yml    (Manual production deploy)
+
+
+## Future Enhancements
+
+□ Auto Scaling Groups
+□ Route53 with custom domain
+□ SSL/TLS certificates (ACM)
+□ CloudFront CDN
+□ ElastiCache (Redis)
+□ Container deployment (ECS/EKS)
+□ AWS WAF
+□ GuardDuty
+□ AWS Backup
