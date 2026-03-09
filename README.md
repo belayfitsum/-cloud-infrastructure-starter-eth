@@ -1,4 +1,4 @@
-# DevOps/SRE Infrastructure Project
+# DevOps- AWS Infrastructure Project
 
 AWS infrastructure demonstrating DevOps/SRE best practices with Terraform, CI/CD, and comprehensive monitoring.
 
