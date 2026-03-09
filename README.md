@@ -140,6 +140,7 @@ Feature Branch → PR → terraform-plan runs → Review → Merge → terraform
 - Cost optimization
 - Documentation and knowledge sharing
 
+
 ## Branch Protection Setup
 
 To enforce PR workflow and prevent direct pushes to main:
@@ -152,3 +153,4 @@ To enforce PR workflow and prevent direct pushes to main:
 
 This ensures all changes go through the PR review process before merging to main.
 Trust me you will benefit alot in doing this, and makes it easier to understand.
+
